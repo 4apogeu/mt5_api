@@ -1,0 +1,31 @@
+"""MT5-Python Socket Bridge.
+
+A socket-based bridge for trading on MetaTrader 5 from Python.
+"""
+
+from .trading import MT5Bridge, MT5BridgeError, NotConnectedError, TradeError
+from .protocol import (
+    OrderType,
+    Timeframe,
+    OrderResult,
+    TickData,
+    AccountInfo,
+    Position,
+    CloseResult,
+)
+
+__all__ = [
+    "MT5Bridge",
+    "MT5BridgeError",
+    "NotConnectedError",
+    "TradeError",
+    "OrderType",
+    "Timeframe",
+    "OrderResult",
+    "TickData",
+    "AccountInfo",
+    "Position",
+    "CloseResult",
+]
+
+__version__ = "0.1.0"
