@@ -109,38 +109,36 @@ mt5_bridge/
 
 ---
 
-### PLANNED: Order Panel UI
+### 2025-12-27: Order Panel UI Implementation Complete
 
 **Framework**: Tkinter (standard library)
 
-**Layout**:
-```
-+------------------------------------------+
-|  Symbol: [BTCUSD v]  Volume: [0.01]      |
-+------------------------------------------+
-|    [B BUY]    [S SELL]    [C CLOSE]      |
-+------------------------------------------+
-|  Status: Connected | Last: BUY OK        |
-+------------------------------------------+
-```
-
-**Keyboard shortcuts**: B=Buy, S=Sell, C=Close
-
-**Files to create**:
+**Structure**:
 ```
 mt5_bridge/ui/
-├── order_panel.py    # Main panel class
-├── async_bridge.py   # Tkinter-asyncio integration
-├── widgets.py        # TradeButton, StatusBar
-└── config.py         # Colors, defaults
+├── __init__.py       # Module exports
+├── config.py         # PanelConfig, Colors dataclasses
+├── async_bridge.py   # AsyncBridge for Tkinter-asyncio integration
+├── widgets.py        # TradeButton, StatusBar, SymbolSelector, VolumeInput
+└── order_panel.py    # Main OrderPanel class
+
+run_panel.py          # Standalone runner
 ```
 
-**Implementation steps**:
-1. Create `ui/config.py` - defaults (symbol, volume, colors)
-2. Create `ui/async_bridge.py` - thread-safe queue for async ops
-3. Create `ui/widgets.py` - TradeButton with visual feedback
-4. Create `ui/order_panel.py` - main panel with B/S/C buttons
-5. Create `run_panel.py` - standalone runner
+**Features**:
+- B/S/C buttons with keyboard shortcuts (B=Buy, S=Sell, C=Close, Esc=Quit)
+- Symbol dropdown (BTCUSD, EURUSD, GBPUSD, USDJPY, XAUUSD)
+- Volume input with +/- buttons
+- Visual feedback (hover, active, success/error flash)
+- Status bar showing connection and last action
+- Thread-safe async operations via queue
+
+**Usage**:
+```bash
+python run_panel.py --symbol BTCUSD --volume 0.01
+```
+
+**Status**: Ready for testing
 
 ---
 
