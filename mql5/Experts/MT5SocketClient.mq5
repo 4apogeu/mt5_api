@@ -648,8 +648,17 @@ ENUM_TIMEFRAMES StringToTimeframe(string tf)
 //+------------------------------------------------------------------+
 string GetJsonString(string json, string key)
 {
+    // Try without space first: "key":"value"
     string searchKey = "\"" + key + "\":\"";
     int start = StringFind(json, searchKey);
+
+    // Try with space: "key": "value"
+    if(start < 0)
+    {
+        searchKey = "\"" + key + "\": \"";
+        start = StringFind(json, searchKey);
+    }
+
     if(start < 0) return "";
 
     start += StringLen(searchKey);
@@ -664,29 +673,36 @@ string GetJsonString(string json, string key)
 //+------------------------------------------------------------------+
 double GetJsonDouble(string json, string key)
 {
-    // Try quoted number first
-    string searchKey = "\"" + key + "\":\"";
-    int start = StringFind(json, searchKey);
-    if(start >= 0)
+    // Find key position
+    string searchKey = "\"" + key + "\":";
+    int keyPos = StringFind(json, searchKey);
+
+    // Try with space
+    if(keyPos < 0)
     {
-        start += StringLen(searchKey);
+        searchKey = "\"" + key + "\": ";
+        keyPos = StringFind(json, searchKey);
+    }
+
+    if(keyPos < 0) return 0;
+
+    int start = keyPos + StringLen(searchKey);
+
+    // Skip whitespace
+    while(start < StringLen(json) && StringGetCharacter(json, start) == ' ')
+        start++;
+
+    // Check if quoted number
+    if(StringGetCharacter(json, start) == '"')
+    {
+        start++;
         int end = StringFind(json, "\"", start);
         if(end > start)
             return StringToDouble(StringSubstr(json, start, end - start));
+        return 0;
     }
 
-    // Try unquoted number
-    searchKey = "\"" + key + "\":";
-    start = StringFind(json, searchKey);
-    if(start < 0) return 0;
-
-    start += StringLen(searchKey);
-
-    // Skip whitespace
-    while(start < StringLen(json) && (StringGetCharacter(json, start) == ' '))
-        start++;
-
-    // Find end of number
+    // Unquoted number - find end
     int end = start;
     while(end < StringLen(json))
     {
@@ -709,6 +725,14 @@ string GetJsonObject(string json, string key)
 {
     string searchKey = "\"" + key + "\":";
     int start = StringFind(json, searchKey);
+
+    // Try with space
+    if(start < 0)
+    {
+        searchKey = "\"" + key + "\": ";
+        start = StringFind(json, searchKey);
+    }
+
     if(start < 0) return "{}";
 
     start += StringLen(searchKey);
