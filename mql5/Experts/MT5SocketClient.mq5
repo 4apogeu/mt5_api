@@ -1,27 +1,52 @@
 //+------------------------------------------------------------------+
 //|                                              MT5SocketClient.mq5 |
 //|                                     MT5-Python Socket Bridge EA  |
-//|                              Connects to Python server as client |
+//|                         Uses Windows Winsock for reliable sockets |
 //+------------------------------------------------------------------+
 #property copyright "MT5-Python Bridge"
-#property version   "1.00"
+#property version   "2.00"
 #property strict
 
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Trade\AccountInfo.mqh>
 
+//--- Winsock DLL imports
+#import "ws2_32.dll"
+   int WSAStartup(int wVersionRequested, int &lpWSAData[]);
+   int WSACleanup();
+   int WSAGetLastError();
+   uint socket(int af, int type, int protocol);
+   int closesocket(uint s);
+   int connect(uint s, uchar &name[], int namelen);
+   int send(uint s, uchar &buf[], int len, int flags);
+   int recv(uint s, uchar &buf[], int len, int flags);
+   int ioctlsocket(uint s, uint cmd, uint &argp);
+   uint htons(uint hostshort);
+   ulong inet_addr(uchar &cp[]);
+#import
+
+//--- Winsock constants
+#define AF_INET         2
+#define SOCK_STREAM     1
+#define IPPROTO_TCP     6
+#define INVALID_SOCKET  0xFFFFFFFF
+#define SOCKET_ERROR    -1
+#define FIONBIO         0x8004667E
+
 //--- Input parameters
-input string   ServerAddress = "192.168.1.100";  // Python server IP
-input int      ServerPort = 1111;                 // Python server port
-input int      ReconnectDelayMs = 5000;           // Reconnect delay (ms)
-input int      HeartbeatIntervalMs = 10000;       // Heartbeat interval (ms)
-input int      TimerIntervalMs = 100;             // Polling interval (ms)
+input string   ServerAddress = "127.0.0.1";       // Python server IP
+input int      ServerPort = 5555;                  // Python server port
+input int      ReconnectDelayMs = 5000;            // Reconnect delay (ms)
+input int      HeartbeatIntervalMs = 10000;        // Heartbeat interval (ms)
+input int      TimerIntervalMs = 100;              // Polling interval (ms)
 
 //--- Global variables
-int            g_socket = INVALID_HANDLE;
+uint           g_socket = INVALID_SOCKET;
 bool           g_connected = false;
+bool           g_wsaInitialized = false;
 datetime       g_lastHeartbeat = 0;
+datetime       g_lastReconnectAttempt = 0;
 string         g_receiveBuffer = "";
 CTrade         g_trade;
 CPositionInfo  g_position;
@@ -32,8 +57,19 @@ CAccountInfo   g_account;
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    Print("MT5SocketClient initializing...");
+    Print("MT5SocketClient v2.0 initializing (Winsock)...");
     Print("Server: ", ServerAddress, ":", ServerPort);
+
+    // Initialize Winsock
+    int wsaData[100];
+    int result = WSAStartup(0x0202, wsaData);  // Winsock 2.2
+    if(result != 0)
+    {
+        Print("WSAStartup failed: ", result);
+        return(INIT_FAILED);
+    }
+    g_wsaInitialized = true;
+    Print("Winsock initialized");
 
     // Set up trade object
     g_trade.SetExpertMagicNumber(0);
@@ -56,6 +92,13 @@ void OnDeinit(const int reason)
 {
     EventKillTimer();
     Disconnect();
+
+    if(g_wsaInitialized)
+    {
+        WSACleanup();
+        g_wsaInitialized = false;
+    }
+
     Print("MT5SocketClient stopped. Reason: ", reason);
 }
 
@@ -67,7 +110,11 @@ void OnTimer()
     // Check connection status
     if(!g_connected)
     {
-        ConnectToServer();
+        // Rate-limit reconnection attempts
+        if(TimeCurrent() - g_lastReconnectAttempt >= ReconnectDelayMs / 1000)
+        {
+            ConnectToServer();
+        }
         return;
     }
 
@@ -82,30 +129,58 @@ void OnTimer()
 }
 
 //+------------------------------------------------------------------+
-//| Connect to Python server                                           |
+//| Connect to Python server using Winsock                             |
 //+------------------------------------------------------------------+
 bool ConnectToServer()
 {
+    g_lastReconnectAttempt = TimeCurrent();
+
     if(g_connected)
         return true;
 
     // Create socket
-    g_socket = SocketCreate();
-    if(g_socket == INVALID_HANDLE)
+    g_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if(g_socket == INVALID_SOCKET)
     {
-        Print("Failed to create socket. Error: ", GetLastError());
+        Print("Socket creation failed: ", WSAGetLastError());
         return false;
     }
 
-    // Connect to server
-    if(!SocketConnect(g_socket, ServerAddress, ServerPort, 5000))
+    // Build sockaddr_in structure (16 bytes)
+    uchar sockAddr[16];
+    ArrayInitialize(sockAddr, 0);
+
+    // sin_family = AF_INET (2)
+    sockAddr[0] = AF_INET & 0xFF;
+    sockAddr[1] = (AF_INET >> 8) & 0xFF;
+
+    // sin_port (network byte order)
+    uint port = htons((uint)ServerPort);
+    sockAddr[2] = (uchar)(port & 0xFF);
+    sockAddr[3] = (uchar)((port >> 8) & 0xFF);
+
+    // sin_addr
+    uchar ipAddr[];
+    StringToCharArray(ServerAddress, ipAddr);
+    ulong addr = inet_addr(ipAddr);
+    sockAddr[4] = (uchar)(addr & 0xFF);
+    sockAddr[5] = (uchar)((addr >> 8) & 0xFF);
+    sockAddr[6] = (uchar)((addr >> 16) & 0xFF);
+    sockAddr[7] = (uchar)((addr >> 24) & 0xFF);
+
+    // Connect
+    if(connect(g_socket, sockAddr, 16) == SOCKET_ERROR)
     {
-        Print("Failed to connect to ", ServerAddress, ":", ServerPort, ". Error: ", GetLastError());
-        SocketClose(g_socket);
-        g_socket = INVALID_HANDLE;
-        Sleep(ReconnectDelayMs);
+        int err = WSAGetLastError();
+        Print("Connect failed: ", err);
+        closesocket(g_socket);
+        g_socket = INVALID_SOCKET;
         return false;
     }
+
+    // Set socket to non-blocking mode
+    uint nonBlocking = 1;
+    ioctlsocket(g_socket, FIONBIO, nonBlocking);
 
     g_connected = true;
     g_lastHeartbeat = TimeCurrent();
@@ -120,10 +195,10 @@ bool ConnectToServer()
 //+------------------------------------------------------------------+
 void Disconnect()
 {
-    if(g_socket != INVALID_HANDLE)
+    if(g_socket != INVALID_SOCKET)
     {
-        SocketClose(g_socket);
-        g_socket = INVALID_HANDLE;
+        closesocket(g_socket);
+        g_socket = INVALID_SOCKET;
     }
     g_connected = false;
     g_receiveBuffer = "";
@@ -135,26 +210,36 @@ void Disconnect()
 //+------------------------------------------------------------------+
 void ReadFromSocket()
 {
-    if(!g_connected || g_socket == INVALID_HANDLE)
+    if(!g_connected || g_socket == INVALID_SOCKET)
         return;
 
-    uchar data[];
-    int bytesRead = SocketRead(g_socket, data, 4096, 10);
+    uchar buffer[4096];
+    ArrayInitialize(buffer, 0);
 
-    if(bytesRead < 0)
-    {
-        int error = GetLastError();
-        if(error != 0 && error != 4014) // 4014 = timeout, which is normal
-        {
-            Print("Socket read error: ", error);
-            Disconnect();
-        }
-        return;
-    }
+    int bytesRead = recv(g_socket, buffer, 4096, 0);
 
     if(bytesRead > 0)
     {
-        g_receiveBuffer += CharArrayToString(data, 0, bytesRead);
+        string data = CharArrayToString(buffer, 0, bytesRead);
+        g_receiveBuffer += data;
+        Print("Received ", bytesRead, " bytes");
+    }
+    else if(bytesRead == 0)
+    {
+        // Connection closed gracefully
+        Print("Server closed connection");
+        Disconnect();
+    }
+    else
+    {
+        // Error or would block
+        int err = WSAGetLastError();
+        // 10035 = WSAEWOULDBLOCK (no data available, normal for non-blocking)
+        if(err != 10035)
+        {
+            Print("Recv error: ", err);
+            Disconnect();
+        }
     }
 }
 
@@ -186,7 +271,7 @@ void HandleMessage(string json)
     string action = GetJsonString(json, "action");
     string params = GetJsonObject(json, "params");
 
-    Print("Received: ", action, " [", requestId, "]");
+    Print("Received command: ", action, " [", requestId, "]");
 
     string response = "";
 
@@ -242,19 +327,15 @@ string HandleTrade(string requestId, string params)
         g_trade.SetExpertMagicNumber(magic);
 
     // Determine order type and execute
-    ENUM_ORDER_TYPE orderType;
-    double execPrice;
     bool result = false;
 
     if(typeStr == "BUY")
     {
-        execPrice = tick.ask;
-        result = g_trade.Buy(volume, symbol, execPrice, sl, tp, comment);
+        result = g_trade.Buy(volume, symbol, tick.ask, sl, tp, comment);
     }
     else if(typeStr == "SELL")
     {
-        execPrice = tick.bid;
-        result = g_trade.Sell(volume, symbol, execPrice, sl, tp, comment);
+        result = g_trade.Sell(volume, symbol, tick.bid, sl, tp, comment);
     }
     else if(typeStr == "BUY_LIMIT")
     {
@@ -484,7 +565,6 @@ void CheckHeartbeat()
 {
     if(TimeCurrent() - g_lastHeartbeat > HeartbeatIntervalMs / 1000)
     {
-        // Just update the timestamp - heartbeat is initiated by Python
         g_lastHeartbeat = TimeCurrent();
     }
 }
@@ -494,7 +574,7 @@ void CheckHeartbeat()
 //+------------------------------------------------------------------+
 void SendResponse(string response)
 {
-    if(!g_connected || g_socket == INVALID_HANDLE)
+    if(!g_connected || g_socket == INVALID_SOCKET)
         return;
 
     response += "\n";  // Add message terminator
@@ -505,11 +585,16 @@ void SendResponse(string response)
     // Remove null terminator from length
     if(len > 0) len--;
 
-    int sent = SocketSend(g_socket, data, len);
-    if(sent < 0)
+    int sent = send(g_socket, data, len, 0);
+    if(sent == SOCKET_ERROR)
     {
-        Print("Failed to send response. Error: ", GetLastError());
+        int err = WSAGetLastError();
+        Print("Send failed: ", err);
         Disconnect();
+    }
+    else
+    {
+        Print("Sent ", sent, " bytes");
     }
 }
 
