@@ -21,6 +21,20 @@ class PanelConfig:
     host: str = "127.0.0.1"
     port: int = 5555
 
+    # SL/TP defaults
+    default_sl_mode: str = "percent"
+    default_sl_value: float = 1.0  # 1%
+    default_tp_mode: str = "percent"
+    default_tp_value: float = 2.0  # 2%
+
+    # Trailing stop defaults
+    default_trailing_enabled: bool = False
+    default_trailing_percent: float = 0.5  # 0.5%
+
+    # Position panel settings
+    position_refresh_interval: int = 1000  # ms
+    max_positions_display: int = 20
+
 
 @dataclass
 class Colors:
@@ -49,6 +63,18 @@ class Colors:
     btn_close_bg: str = "#455a64"
     btn_close_hover: str = "#546e7a"
     btn_close_active: str = "#37474f"
+
+    # Position panel colors
+    bg_position_row: str = "#2a2a2a"
+    bg_position_row_alt: str = "#252525"
+    text_profit_positive: str = "#4caf50"
+    text_profit_negative: str = "#f44336"
+    btn_trailing_bg: str = "#3d5a80"
+    btn_trailing_hover: str = "#4d6a90"
+
+    # Mode selector colors
+    mode_selected_bg: str = "#4a4a4a"
+    mode_unselected_bg: str = "#2a2a2a"
 
 
 # Default instances
