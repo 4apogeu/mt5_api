@@ -21,10 +21,14 @@ mt5_third_parties/
 │   ├── protocol/            # JSON message models & parsing
 │   ├── server/              # TCP server & connection handling
 │   ├── trading/             # MT5Bridge high-level API
+│   ├── timing/              # Latency measurement & analysis
+│   ├── ui/                  # Order panel UI (Tkinter)
 │   └── main.py              # Entry point
 ├── mql5/
 │   └── Experts/
 │       └── MT5SocketClient.mq5   # MT5 Expert Advisor
+├── run_panel.py             # Order panel runner
+├── test_latency.py          # Latency benchmark script
 └── example.py               # Usage example
 ```
 
@@ -121,15 +125,95 @@ asyncio.run(main())
 
 `M1`, `M5`, `M15`, `M30`, `H1`, `H4`, `D1`, `W1`, `MN1`
 
+## Order Panel UI
+
+A graphical trading panel with quick-access buttons for manual trading.
+
+### Usage
+
+```bash
+python run_panel.py --symbol BTCUSD --volume 0.01 --port 5555
+```
+
+### Features
+
+- **B/S/C buttons** - Buy, Sell, Close All positions
+- **Keyboard shortcuts** - B=Buy, S=Sell, C=Close, Esc=Quit
+- **Symbol dropdown** - BTCUSD, EURUSD, GBPUSD, USDJPY, XAUUSD
+- **Volume input** - Adjustable with +/- buttons
+- **Visual feedback** - Hover effects, success/error flash
+- **Status bar** - Connection status and last action result
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--symbol` | BTCUSD | Initial trading symbol |
+| `--volume` | 0.01 | Initial trade volume |
+| `--port` | 5555 | Server port |
+
+## Latency Measurement
+
+Built-in execution speed measurement for performance analysis.
+
+### Usage
+
+```bash
+python test_latency.py --iterations 50 --symbol BTCUSD --output latency.csv
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--iterations`, `-n` | 50 | Number of iterations per test |
+| `--symbol`, `-s` | BTCUSD | Symbol for testing |
+| `--output`, `-o` | (none) | Output CSV file for detailed samples |
+| `--port`, `-p` | 5555 | Server port |
+| `--timeout` | 60 | Connection timeout in seconds |
+
+### Programmatic Usage
+
+```python
+from mt5_bridge import MT5Bridge, ConsoleReporter
+
+# Enable timing collection
+bridge = MT5Bridge(port=5555, enable_timing=True)
+await bridge.start()
+await bridge.wait_for_connection()
+
+# Execute some commands...
+await bridge.get_tick("BTCUSD")
+await bridge.get_account()
+
+# Get timing report
+report = bridge.get_timing_report()
+ConsoleReporter().print_report(report)
+
+# Export to CSV
+from mt5_bridge import CSVReporter
+CSVReporter().write_samples(bridge.get_timing_samples(), "latency.csv")
+```
+
+### Benchmark Results
+
+With 10ms polling interval (default):
+
+| Metric | Min | Avg | P50 | P95 | P99 |
+|--------|-----|-----|-----|-----|-----|
+| Round-trip | 1.06ms | 13.64ms | 17.36ms | 22.64ms | 26.41ms |
+| EA Processing | 0.01ms | 0.02ms | 0.02ms | 0.04ms | 0.06ms |
+| Network (est.) | 0.52ms | 6.81ms | 8.67ms | 11.31ms | 13.20ms |
+
 ## EA Input Parameters
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| ServerAddress | "192.168.1.100" | Python server IP |
-| ServerPort | 1111 | TCP port |
+| ServerAddress | "127.0.0.1" | Python server IP |
+| ServerPort | 5555 | TCP port |
 | ReconnectDelayMs | 5000 | Reconnect delay on disconnect |
 | HeartbeatIntervalMs | 10000 | Keep-alive interval |
-| TimerIntervalMs | 100 | Socket polling interval |
+| TimerIntervalMs | 10 | Socket polling interval (lower = faster, higher CPU) |
 
 ## Troubleshooting
 

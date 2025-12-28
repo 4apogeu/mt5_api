@@ -142,7 +142,7 @@ python run_panel.py --symbol BTCUSD --volume 0.01
 
 ---
 
-### PLANNED: Execution Speed Measurement
+### 2025-12-28: Execution Speed Measurement Complete
 
 **Approach**: Embedded EA timestamps + round-trip calculation
 
@@ -157,23 +157,45 @@ python run_panel.py --symbol BTCUSD --volume 0.01
 - EA processing time (T3-T2)
 - Network estimate ((T4-T1)-(T3-T2))/2
 
-**Files to create**:
+**Structure**:
 ```
 mt5_bridge/timing/
-├── models.py      # TimingData, LatencyStats
-├── collector.py   # Capture & store timing
-├── analyzer.py    # Statistics (avg, P50, P95, P99)
-└── reporter.py    # Console/CSV output
+├── __init__.py    # Module exports
+├── models.py      # TimingData, LatencyStats, TimingReport
+├── collector.py   # TimingCollector class
+├── analyzer.py    # LatencyAnalyzer with stats (avg, P50, P95, P99)
+└── reporter.py    # ConsoleReporter, CSVReporter
+
+test_latency.py    # Benchmark script
 ```
 
-**EA modification required**:
-- Add `GetMicrosecondCount()` in HandleMessage and BuildSuccessResponse
-- Include `timing` object in JSON response
+**EA modifications**:
+- Added `g_t2_receive` global variable
+- Capture timestamp in `HandleMessage()` using `GetMicrosecondCount()`
+- Added `timing` object in JSON response from `BuildSuccessResponse()`
 
-**Implementation steps**:
-1. Modify EA to capture and return timestamps
-2. Update Response model with optional `timing` field
-3. Create `timing/collector.py` - TimingCollector class
-4. Create `timing/analyzer.py` - LatencyAnalyzer with stats
-5. Add `enable_timing` flag to MT5Bridge
-6. Create `test_latency.py` - benchmark script
+**Bridge integration**:
+- Added `enable_timing` flag to MT5Bridge constructor
+- Methods: `get_timing_samples()`, `get_timing_report()`, `get_timing_report_by_action()`, `clear_timing_data()`
+
+**Usage**:
+```bash
+python test_latency.py --iterations 50 --symbol BTCUSD --output latency.csv
+```
+
+**Benchmark Results** (10ms polling interval):
+
+| Metric | Min | Avg | P50 | P95 | P99 | Max |
+|--------|-----|-----|-----|-----|-----|-----|
+| Round-trip | 1.06ms | 13.64ms | 17.36ms | 22.64ms | 26.41ms | 26.41ms |
+| EA Processing | 0.01ms | 0.02ms | 0.02ms | 0.04ms | 0.06ms | 0.06ms |
+| Network (est.) | 0.52ms | 6.81ms | 8.67ms | 11.31ms | 13.20ms | 13.20ms |
+
+**Polling Interval Comparison**:
+
+| Interval | Avg Latency | Improvement |
+|----------|-------------|-------------|
+| 100ms | 99.88ms | baseline |
+| 10ms | 13.64ms | 7.3x faster |
+
+**Status**: Complete
