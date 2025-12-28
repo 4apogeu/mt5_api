@@ -55,19 +55,35 @@ class OrderPanel:
             top_frame,
             symbols=self.config.symbols,
             default=self.config.default_symbol,
+            on_change=self._on_symbol_change,
             colors=self.colors,
         )
         self.symbol_selector.pack(side=tk.LEFT)
 
+        # Volume and spread frame (right side)
+        volume_spread_frame = tk.Frame(top_frame, bg=self.colors.bg_main)
+        volume_spread_frame.pack(side=tk.RIGHT)
+
         self.volume_input = VolumeInput(
-            top_frame,
+            volume_spread_frame,
             default=self.config.default_volume,
             step=self.config.volume_step,
             min_val=self.config.volume_min,
             max_val=self.config.volume_max,
+            on_volume_change=self._on_volume_change,
             colors=self.colors,
         )
-        self.volume_input.pack(side=tk.RIGHT)
+        self.volume_input.pack(side=tk.LEFT)
+
+        # Spread cost label
+        self.spread_label = tk.Label(
+            volume_spread_frame,
+            text="Spread: $0.00",
+            bg=self.colors.bg_main,
+            fg=self.colors.text_secondary,
+            font=("Helvetica", 10),
+        )
+        self.spread_label.pack(side=tk.LEFT, padx=(10, 0))
 
         # SL/TP row
         sltp_frame = tk.Frame(self.root, bg=self.colors.bg_main)
@@ -189,6 +205,38 @@ class OrderPanel:
 
         return sl_price, tp_price
 
+    def _on_symbol_change(self, symbol: str):
+        """Handle symbol change - update spread display."""
+        self._update_spread_cost()
+
+    def _on_volume_change(self, volume: float):
+        """Handle volume change - update spread display."""
+        self._update_spread_cost()
+
+    def _update_spread_cost(self):
+        """Fetch tick data and update spread cost label."""
+        symbol = self.symbol_selector.get()
+        volume = self.volume_input.get()
+
+        self.async_bridge.submit(
+            self._calculate_spread_cost,
+            symbol,
+            volume,
+            callback=self._on_spread_calculated,
+            error_callback=lambda e: None,  # Silently ignore errors
+        )
+
+    async def _calculate_spread_cost(self, symbol: str, volume: float) -> float:
+        """Calculate spread cost in dollars."""
+        tick = await self.bridge.get_tick(symbol)
+        spread_points = tick.ask - tick.bid
+        spread_cost = spread_points * volume
+        return spread_cost
+
+    def _on_spread_calculated(self, spread_cost: float):
+        """Update the spread label with calculated cost."""
+        self.spread_label.config(text=f"Spread: ${spread_cost:.2f}")
+
     def _on_buy(self):
         """Handle Buy button click."""
         symbol = self.symbol_selector.get()
@@ -304,6 +352,8 @@ class OrderPanel:
         """Handle connection success."""
         self.status_bar.set_connected(True)
         self.status_bar.set_action("Ready")
+        # Initial spread cost update
+        self._update_spread_cost()
         # Start positions refresh
         self._schedule_positions_refresh()
 

@@ -293,6 +293,8 @@ void HandleMessage(string json)
         response = HandleClosePosition(requestId, params);
     else if(action == "HEARTBEAT")
         response = HandleHeartbeat(requestId);
+    else if(action == "GET_SYMBOLS")
+        response = HandleGetSymbols(requestId);
     else
         response = BuildErrorResponse(requestId, -1, "Unknown action: " + action);
 
@@ -559,6 +561,31 @@ string HandleHeartbeat(string requestId)
         TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS)
     );
 
+    return BuildSuccessResponse(requestId, data);
+}
+
+//+------------------------------------------------------------------+
+//| Handle GET_SYMBOLS command                                         |
+//+------------------------------------------------------------------+
+string HandleGetSymbols(string requestId)
+{
+    string symbolsJson = "[";
+    int total = SymbolsTotal(true);  // true = only Market Watch symbols
+    bool first = true;
+
+    for(int i = 0; i < total; i++)
+    {
+        string sym = SymbolName(i, true);
+        if(StringLen(sym) > 0)
+        {
+            if(!first) symbolsJson += ",";
+            first = false;
+            symbolsJson += "\"" + sym + "\"";
+        }
+    }
+    symbolsJson += "]";
+
+    string data = "{\"symbols\":" + symbolsJson + "}";
     return BuildSuccessResponse(requestId, data);
 }
 

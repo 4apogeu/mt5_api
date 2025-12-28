@@ -243,6 +243,11 @@ class MT5Bridge:
         })
         return data.get("success", False)
 
+    async def get_symbols(self) -> list[str]:
+        """Get all tradeable symbols from Market Watch."""
+        data = await self._send_command(Action.GET_SYMBOLS, {})
+        return data.get("symbols", [])
+
     async def heartbeat(self) -> bool:
         """Send heartbeat to check connection."""
         try:

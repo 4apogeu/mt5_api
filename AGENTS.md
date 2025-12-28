@@ -199,3 +199,38 @@ python test_latency.py --iterations 50 --symbol BTCUSD --output latency.csv
 | 10ms | 13.64ms | 7.3x faster |
 
 **Status**: Complete
+
+---
+
+### 2025-12-28: UI Improvements - Phase 2
+
+**Goals**:
+1. Position modify dialog (replace inline editing)
+2. Spread display in dollar amount
+3. Symbol autocomplete from tradeable pairs
+
+#### Task 1: Position Modify Dialog
+**Status**: Pending
+**Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
+**Description**: Add "Edit" button on position row that opens a modal dialog for modifying SL/TP/trailing stop. This replaces inline editing which is difficult due to auto-refresh.
+
+#### Task 2: Spread Display
+**Status**: Complete
+**Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
+**Description**: Display spread cost in dollar amount (spread * volume * pip_value) near the volume input area.
+
+#### Task 3a: GET_SYMBOLS EA Command
+**Status**: Complete
+**Files**: `mql5/Experts/MT5SocketClient.mq5`
+**Description**: Add GET_SYMBOLS handler to EA using SymbolsTotal() and SymbolName() to return all tradeable symbols.
+
+#### Task 3b: Python Bridge get_symbols
+**Status**: Complete
+**Files**: `mt5_bridge/protocol/models.py`, `mt5_bridge/trading/bridge.py`
+**Description**: Add GET_SYMBOLS action and get_symbols() method to Python bridge.
+
+#### Task 3c: Symbol Autocomplete
+**Status**: Pending
+**Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
+**Description**: Replace symbol dropdown with searchable autocomplete that filters tradeable pairs from account.
+
