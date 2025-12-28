@@ -137,12 +137,27 @@ python run_panel.py --symbol BTCUSD --volume 0.01 --port 5555
 
 ### Features
 
-- **B/S/C buttons** - Buy, Sell, Close All positions
-- **Keyboard shortcuts** - B=Buy, S=Sell, C=Close, Esc=Quit
+- **Buy/Sell/Close buttons** - Quick trade execution
+- **SL/TP inputs** - Stop Loss and Take Profit with mode selection:
+  - `%` - Percentage from entry price
+  - `$` - Dollar amount risk
+  - `Price` - Absolute price level
+- **Positions Panel** - View and manage all open positions:
+  - Editable SL/TP fields (press Enter to apply)
+  - Close button per position
+  - Trailing stop toggle with percentage input
+- **Trailing Stops** - Automatic SL adjustment as price moves in your favor
+- **Keyboard shortcuts**:
+  - `B` - Buy
+  - `S` - Sell
+  - `C` - Close all positions for selected symbol
+  - `R` - Refresh positions
+  - `Esc` - Quit
 - **Symbol dropdown** - BTCUSD, EURUSD, GBPUSD, USDJPY, XAUUSD
 - **Volume input** - Adjustable with +/- buttons
 - **Visual feedback** - Hover effects, success/error flash
 - **Status bar** - Connection status and last action result
+- **Auto-refresh** - Positions panel updates automatically
 
 ### Options
 
