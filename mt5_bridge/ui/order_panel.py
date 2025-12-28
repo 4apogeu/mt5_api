@@ -12,6 +12,7 @@ from .widgets import (
     ModeInput, SLTPMode, PositionsPanel,
 )
 from .utils import calculate_sl_price, calculate_tp_price
+from .trailing_stop import TrailingStopManager
 
 
 class OrderPanel:
@@ -27,6 +28,7 @@ class OrderPanel:
         self.config = config
         self.colors = colors
         self.async_bridge = AsyncBridge()
+        self.trailing_manager = TrailingStopManager(self._on_trailing_sl_update)
 
         self._setup_window()
         self._setup_widgets()
@@ -37,10 +39,10 @@ class OrderPanel:
         self.root = tk.Tk()
         self.root.title("MT5 Order Panel")
         self.root.configure(bg=self.colors.bg_main)
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
 
         # Center window
-        self.root.geometry("450x280")
+        self.root.geometry("650x480")
         self.root.eval("tk::PlaceWindow . center")
 
     def _setup_widgets(self):
@@ -130,6 +132,17 @@ class OrderPanel:
             colors=self.colors,
         )
         self.close_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(5, 0))
+
+        # Positions panel
+        self.positions_panel = PositionsPanel(
+            self.root,
+            colors=self.colors,
+            on_modify=self._on_position_modify,
+            on_close=self._on_position_close,
+            on_trailing_toggle=self._on_trailing_toggle,
+            on_refresh=self._refresh_positions,
+        )
+        self.positions_panel.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
 
         # Bottom row: Status bar
         self.status_bar = StatusBar(self.root, colors=self.colors)
@@ -255,6 +268,8 @@ class OrderPanel:
         self.status_bar.set_action(
             f"{action} OK @ {result.price_executed}", success=True
         )
+        # Refresh positions to show the new trade
+        self._refresh_positions()
 
     def _on_close_success(self, closed_count: int):
         """Handle successful close."""
@@ -263,6 +278,7 @@ class OrderPanel:
 
         if closed_count > 0:
             self.status_bar.set_action(f"Closed {closed_count} position(s)", success=True)
+            self._refresh_positions()
         else:
             self.status_bar.set_action("No positions to close", success=True)
 
@@ -286,11 +302,127 @@ class OrderPanel:
         """Handle connection success."""
         self.status_bar.set_connected(True)
         self.status_bar.set_action("Ready")
+        # Start positions refresh
+        self._schedule_positions_refresh()
 
     def _on_connection_error(self, error: Exception):
         """Handle connection error."""
         self.status_bar.set_connected(False)
         self.status_bar.set_action(f"Connection failed: {error}", success=False)
+
+    # --- Position Panel Callbacks ---
+
+    def _refresh_positions(self):
+        """Refresh the positions list."""
+        self.async_bridge.submit(
+            self._fetch_positions,
+            callback=self._update_positions_panel,
+            error_callback=lambda e: self.status_bar.set_action(f"Refresh failed: {e}", success=False),
+        )
+
+    async def _fetch_positions(self):
+        """Fetch all open positions."""
+        positions = await self.bridge.get_positions()
+        return [
+            {
+                "ticket": p.ticket,
+                "symbol": p.symbol,
+                "order_type": p.order_type,
+                "volume": p.volume,
+                "open_price": p.open_price,
+                "stop_loss": p.stop_loss,
+                "take_profit": p.take_profit,
+                "profit": p.profit,
+            }
+            for p in positions
+        ]
+
+    def _update_positions_panel(self, positions: list):
+        """Update positions panel with fetched data."""
+        self.positions_panel.update_positions(positions)
+
+    def _on_position_modify(self, ticket: int, sl: float, tp: float):
+        """Handle position SL/TP modification."""
+        self.status_bar.set_action(f"Modifying position #{ticket}...")
+        self.async_bridge.submit(
+            self.bridge.modify_position,
+            ticket,
+            sl,
+            tp,
+            callback=lambda _: self._on_modify_success(ticket),
+            error_callback=lambda e: self._on_modify_error(ticket, e),
+        )
+
+    def _on_modify_success(self, ticket: int):
+        """Handle successful position modification."""
+        self.status_bar.set_action(f"Position #{ticket} modified", success=True)
+        self._refresh_positions()
+
+    def _on_modify_error(self, ticket: int, error: Exception):
+        """Handle position modification error."""
+        self.status_bar.set_action(f"Modify #{ticket} failed", success=False)
+        messagebox.showerror("Modify Error", str(error))
+
+    def _on_position_close(self, ticket: int):
+        """Handle single position close."""
+        self.status_bar.set_action(f"Closing position #{ticket}...")
+        self.async_bridge.submit(
+            self.bridge.close_position,
+            ticket,
+            callback=lambda _: self._on_single_close_success(ticket),
+            error_callback=lambda e: self._on_modify_error(ticket, e),
+        )
+
+    def _on_single_close_success(self, ticket: int):
+        """Handle successful single position close."""
+        self.status_bar.set_action(f"Position #{ticket} closed", success=True)
+        self.trailing_manager.remove_trailing(ticket)
+        self._refresh_positions()
+
+    def _on_trailing_toggle(self, ticket: int, enabled: bool, percent: float):
+        """Handle trailing stop toggle."""
+        if enabled:
+            # Get current position info to initialize trailing
+            self.async_bridge.submit(
+                self._enable_trailing,
+                ticket,
+                percent,
+                callback=lambda _: self.status_bar.set_action(f"Trailing enabled #{ticket} @ {percent}%"),
+                error_callback=lambda e: self.status_bar.set_action(f"Trailing failed: {e}", success=False),
+            )
+        else:
+            self.trailing_manager.remove_trailing(ticket)
+            self.status_bar.set_action(f"Trailing disabled #{ticket}")
+
+    async def _enable_trailing(self, ticket: int, percent: float):
+        """Enable trailing stop for a position."""
+        positions = await self.bridge.get_positions()
+        for p in positions:
+            if p.ticket == ticket:
+                tick = await self.bridge.get_tick(p.symbol)
+                price = tick.bid if p.order_type.upper() == "BUY" else tick.ask
+                self.trailing_manager.add_trailing(
+                    ticket, p.symbol, p.order_type.upper(),
+                    price, p.stop_loss or 0, percent
+                )
+                return
+        raise ValueError(f"Position #{ticket} not found")
+
+    def _on_trailing_sl_update(self, ticket: int, new_sl: float):
+        """Handle trailing stop SL update from manager."""
+        self.async_bridge.submit(
+            self.bridge.modify_position,
+            ticket,
+            new_sl,
+            None,  # Don't change TP
+            callback=lambda _: self.status_bar.set_action(f"Trailing SL updated #{ticket}"),
+            error_callback=lambda e: self.status_bar.set_action(f"Trailing update failed", success=False),
+        )
+
+    def _schedule_positions_refresh(self):
+        """Schedule periodic positions refresh."""
+        self._refresh_positions()
+        self.root.after(self.config.position_refresh_interval, self._schedule_positions_refresh)
 
     def run(self):
         """Start the panel and connect to MT5."""
