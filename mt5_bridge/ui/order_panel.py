@@ -7,7 +7,11 @@ from typing import Optional
 from ..trading.bridge import MT5Bridge
 from .config import PanelConfig, Colors, DEFAULT_CONFIG, DEFAULT_COLORS
 from .async_bridge import AsyncBridge
-from .widgets import TradeButton, StatusBar, SymbolSelector, VolumeInput
+from .widgets import (
+    TradeButton, StatusBar, SymbolSelector, VolumeInput,
+    ModeInput, SLTPMode, PositionsPanel,
+)
+from .utils import calculate_sl_price, calculate_tp_price
 
 
 class OrderPanel:
@@ -36,7 +40,7 @@ class OrderPanel:
         self.root.resizable(False, False)
 
         # Center window
-        self.root.geometry("380x180")
+        self.root.geometry("450x280")
         self.root.eval("tk::PlaceWindow . center")
 
     def _setup_widgets(self):
@@ -63,7 +67,31 @@ class OrderPanel:
         )
         self.volume_input.pack(side=tk.RIGHT)
 
-        # Middle row: Trade buttons
+        # SL/TP row
+        sltp_frame = tk.Frame(self.root, bg=self.colors.bg_main)
+        sltp_frame.pack(fill=tk.X, padx=15, pady=(5, 10))
+
+        self.sl_input = ModeInput(
+            sltp_frame,
+            label="SL",
+            default_mode=SLTPMode.PERCENTAGE,
+            default_value=self.config.default_sl_value,
+            step=0.1,
+            colors=self.colors,
+        )
+        self.sl_input.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.tp_input = ModeInput(
+            sltp_frame,
+            label="TP",
+            default_mode=SLTPMode.PERCENTAGE,
+            default_value=self.config.default_tp_value,
+            step=0.1,
+            colors=self.colors,
+        )
+        self.tp_input.pack(side=tk.LEFT)
+
+        # Trade buttons row
         btn_frame = tk.Frame(self.root, bg=self.colors.bg_main)
         btn_frame.pack(fill=tk.X, padx=15, pady=10)
 
@@ -117,6 +145,35 @@ class OrderPanel:
         self.root.bind("<C>", lambda e: self._on_close())
         self.root.bind("<Escape>", lambda e: self.root.quit())
 
+    def _get_sl_tp_prices(self, side: str, price: float, volume: float) -> tuple:
+        """Calculate SL/TP prices from input modes and values."""
+        sl_mode = self.sl_input.get_mode()
+        sl_value = self.sl_input.get_value()
+        tp_mode = self.tp_input.get_mode()
+        tp_value = self.tp_input.get_value()
+
+        # Map widget modes to util modes
+        mode_map = {
+            SLTPMode.PERCENTAGE: "percent",
+            SLTPMode.DOLLAR: "dollar",
+            SLTPMode.PRICE: "price",
+        }
+
+        sl_price = 0.0
+        tp_price = 0.0
+
+        if sl_value > 0:
+            sl_price = calculate_sl_price(
+                price, side, mode_map.get(sl_mode, "percent"), sl_value, volume
+            )
+
+        if tp_value > 0:
+            tp_price = calculate_tp_price(
+                price, side, mode_map.get(tp_mode, "percent"), tp_value, volume
+            )
+
+        return sl_price, tp_price
+
     def _on_buy(self):
         """Handle Buy button click."""
         symbol = self.symbol_selector.get()
@@ -126,12 +183,18 @@ class OrderPanel:
         self.status_bar.set_action(f"Buying {symbol}...")
 
         self.async_bridge.submit(
-            self.bridge.buy,
+            self._execute_buy,
             symbol,
             volume,
             callback=lambda r: self._on_trade_success("BUY", r),
             error_callback=lambda e: self._on_trade_error("BUY", e),
         )
+
+    async def _execute_buy(self, symbol: str, volume: float):
+        """Execute buy with SL/TP calculation."""
+        tick = await self.bridge.get_tick(symbol)
+        sl, tp = self._get_sl_tp_prices("BUY", tick.ask, volume)
+        return await self.bridge.buy(symbol, volume, sl, tp)
 
     def _on_sell(self):
         """Handle Sell button click."""
@@ -142,12 +205,18 @@ class OrderPanel:
         self.status_bar.set_action(f"Selling {symbol}...")
 
         self.async_bridge.submit(
-            self.bridge.sell,
+            self._execute_sell,
             symbol,
             volume,
             callback=lambda r: self._on_trade_success("SELL", r),
             error_callback=lambda e: self._on_trade_error("SELL", e),
         )
+
+    async def _execute_sell(self, symbol: str, volume: float):
+        """Execute sell with SL/TP calculation."""
+        tick = await self.bridge.get_tick(symbol)
+        sl, tp = self._get_sl_tp_prices("SELL", tick.bid, volume)
+        return await self.bridge.sell(symbol, volume, sl, tp)
 
     def _on_close(self):
         """Handle Close button click."""
