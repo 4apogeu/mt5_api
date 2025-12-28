@@ -156,6 +156,8 @@ class OrderPanel:
         self.root.bind("<S>", lambda e: self._on_sell())
         self.root.bind("<c>", lambda e: self._on_close())
         self.root.bind("<C>", lambda e: self._on_close())
+        self.root.bind("<r>", lambda e: self._refresh_positions())
+        self.root.bind("<R>", lambda e: self._refresh_positions())
         self.root.bind("<Escape>", lambda e: self.root.quit())
 
     def _get_sl_tp_prices(self, side: str, price: float, volume: float) -> tuple:
