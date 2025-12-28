@@ -56,6 +56,20 @@ class Request:
 
 
 @dataclass
+class EATiming:
+    """Timing data from EA for latency measurement."""
+    t2_receive: int = 0  # EA receive timestamp (microseconds, relative)
+    t3_execute: int = 0  # EA execute complete timestamp (microseconds, relative)
+
+    @classmethod
+    def from_json_dict(cls, data: dict) -> "EATiming":
+        return cls(
+            t2_receive=data.get("t2_receive", 0),
+            t3_execute=data.get("t3_execute", 0)
+        )
+
+
+@dataclass
 class Response:
     """Response received from MT5 EA."""
     request_id: str
@@ -63,15 +77,20 @@ class Response:
     error_code: int
     error_message: str
     data: dict[str, Any]
+    timing: Optional[EATiming] = None
 
     @classmethod
     def from_json_dict(cls, data: dict) -> "Response":
+        timing_data = data.get("timing")
+        timing = EATiming.from_json_dict(timing_data) if timing_data else None
+
         return cls(
             request_id=data.get("id", ""),
             success=data.get("success", False),
             error_code=data.get("error_code", -1),
             error_message=data.get("error_message", ""),
-            data=data.get("data", {})
+            data=data.get("data", {}),
+            timing=timing
         )
 
 

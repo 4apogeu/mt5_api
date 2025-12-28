@@ -17,6 +17,13 @@ from ..protocol import (
     Position,
     CloseResult,
 )
+from ..timing import (
+    TimingCollector,
+    TimingData,
+    LatencyAnalyzer,
+    TimingReport,
+    get_timestamp_us,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +49,21 @@ class TradeError(MT5BridgeError):
 class MT5Bridge:
     """High-level API for MT5 trading operations."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 1111):
+    def __init__(
+        self,
+        host: str = "0.0.0.0",
+        port: int = 1111,
+        enable_timing: bool = False
+    ):
         self._server = MT5Server(
             host=host,
             port=port,
             on_connect=self._on_connect,
             on_disconnect=self._on_disconnect
         )
+        self._enable_timing = enable_timing
+        self._timing_collector = TimingCollector() if enable_timing else None
+        self._timing_analyzer = LatencyAnalyzer() if enable_timing else None
 
     def _on_connect(self, connection: MT5Connection) -> None:
         logger.info(f"MT5 EA connected: {connection.client_address}")
@@ -83,7 +98,20 @@ class MT5Bridge:
         """Send a command and return the response data."""
         connection = self._get_connection()
         request = Request(action=action, params=params)
+
+        # Start timing if enabled
+        if self._timing_collector:
+            self._timing_collector.start_request(request.request_id, action.value)
+
         response = await connection.send_request(request)
+
+        # Complete timing if enabled and timing data available
+        if self._timing_collector and response.timing:
+            self._timing_collector.complete_request(
+                request.request_id,
+                response.timing.t2_receive,
+                response.timing.t3_execute
+            )
 
         if not response.success:
             raise TradeError(
@@ -222,3 +250,35 @@ class MT5Bridge:
             return True
         except Exception:
             return False
+
+    # Timing-related methods
+
+    @property
+    def timing_enabled(self) -> bool:
+        """Check if timing collection is enabled."""
+        return self._enable_timing
+
+    def get_timing_samples(self) -> list[TimingData]:
+        """Get all collected timing samples."""
+        if not self._timing_collector:
+            return []
+        return self._timing_collector.get_samples()
+
+    def get_timing_report(self) -> Optional[TimingReport]:
+        """Get timing analysis report."""
+        if not self._timing_collector or not self._timing_analyzer:
+            return None
+        samples = self._timing_collector.get_samples()
+        return self._timing_analyzer.analyze(samples)
+
+    def get_timing_report_by_action(self) -> dict[str, TimingReport]:
+        """Get timing reports grouped by action type."""
+        if not self._timing_collector or not self._timing_analyzer:
+            return {}
+        samples = self._timing_collector.get_samples()
+        return self._timing_analyzer.analyze_by_action(samples)
+
+    def clear_timing_data(self) -> None:
+        """Clear all collected timing data."""
+        if self._timing_collector:
+            self._timing_collector.clear()

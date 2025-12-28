@@ -51,6 +51,7 @@ string         g_receiveBuffer = "";
 CTrade         g_trade;
 CPositionInfo  g_position;
 CAccountInfo   g_account;
+ulong          g_t2_receive = 0;  // Timestamp when message was received (for latency measurement)
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                     |
@@ -266,6 +267,9 @@ void ProcessMessages()
 //+------------------------------------------------------------------+
 void HandleMessage(string json)
 {
+    // Capture receive timestamp for latency measurement
+    g_t2_receive = GetMicrosecondCount();
+
     // Parse JSON fields
     string requestId = GetJsonString(json, "id");
     string action = GetJsonString(json, "action");
@@ -603,10 +607,15 @@ void SendResponse(string response)
 //+------------------------------------------------------------------+
 string BuildSuccessResponse(string requestId, string data)
 {
+    // Capture execute complete timestamp for latency measurement
+    ulong t3_execute = GetMicrosecondCount();
+
     return StringFormat(
-        "{\"id\":\"%s\",\"success\":true,\"error_code\":0,\"error_message\":\"\",\"data\":%s}",
+        "{\"id\":\"%s\",\"success\":true,\"error_code\":0,\"error_message\":\"\",\"data\":%s,\"timing\":{\"t2_receive\":%I64u,\"t3_execute\":%I64u}}",
         requestId,
-        data
+        data,
+        g_t2_receive,
+        t3_execute
     );
 }
 
