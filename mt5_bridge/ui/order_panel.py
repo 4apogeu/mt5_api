@@ -352,10 +352,26 @@ class OrderPanel:
         """Handle connection success."""
         self.status_bar.set_connected(True)
         self.status_bar.set_action("Ready")
+        # Fetch tradeable symbols from broker
+        self._fetch_symbols()
         # Initial spread cost update
         self._update_spread_cost()
         # Start positions refresh
         self._schedule_positions_refresh()
+
+    def _fetch_symbols(self):
+        """Fetch tradeable symbols from broker and update selector."""
+        self.async_bridge.submit(
+            self.bridge.get_symbols,
+            callback=self._on_symbols_fetched,
+            error_callback=lambda e: self.status_bar.set_action(f"Failed to fetch symbols: {e}", success=False),
+        )
+
+    def _on_symbols_fetched(self, symbols: list[str]):
+        """Update symbol selector with fetched symbols."""
+        if symbols:
+            self.symbol_selector.set_symbols(symbols)
+            self.status_bar.set_action(f"Loaded {len(symbols)} symbols")
 
     def _on_connection_error(self, error: Exception):
         """Handle connection error."""

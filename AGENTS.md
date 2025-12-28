@@ -210,8 +210,8 @@ python test_latency.py --iterations 50 --symbol BTCUSD --output latency.csv
 3. Symbol autocomplete from tradeable pairs
 
 #### Task 1: Position Modify Dialog
-**Status**: Pending
-**Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
+**Status**: Complete
+**Files**: `mt5_bridge/ui/widgets.py`
 **Description**: Add "Edit" button on position row that opens a modal dialog for modifying SL/TP/trailing stop. This replaces inline editing which is difficult due to auto-refresh.
 
 #### Task 2: Spread Display
@@ -230,7 +230,7 @@ python test_latency.py --iterations 50 --symbol BTCUSD --output latency.csv
 **Description**: Add GET_SYMBOLS action and get_symbols() method to Python bridge.
 
 #### Task 3c: Symbol Autocomplete
-**Status**: Pending
+**Status**: Complete
 **Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
 **Description**: Replace symbol dropdown with searchable autocomplete that filters tradeable pairs from account.
 

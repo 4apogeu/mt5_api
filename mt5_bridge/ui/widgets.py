@@ -125,13 +125,13 @@ class StatusBar(tk.Frame):
 
 
 class SymbolSelector(tk.Frame):
-    """Symbol dropdown selector."""
+    """Symbol selector with searchable autocomplete dropdown."""
 
     def __init__(
         self,
         parent,
-        symbols: tuple,
-        default: str,
+        symbols: tuple = (),
+        default: str = "",
         on_change: Optional[Callable[[str], None]] = None,
         colors: Colors = DEFAULT_COLORS,
         **kwargs,
@@ -139,6 +139,8 @@ class SymbolSelector(tk.Frame):
         super().__init__(parent, bg=colors.bg_main, **kwargs)
         self.colors = colors
         self.on_change = on_change
+        self._all_symbols: list[str] = list(symbols)
+        self._filtered_symbols: list[str] = list(symbols)
 
         tk.Label(
             self,
@@ -153,19 +155,64 @@ class SymbolSelector(tk.Frame):
             self,
             textvariable=self.var,
             values=symbols,
-            state="readonly",
-            width=10,
+            width=12,
             font=("Helvetica", 11),
         )
         self.combo.pack(side=tk.LEFT)
         self.combo.bind("<<ComboboxSelected>>", self._on_select)
+        self.combo.bind("<KeyRelease>", self._on_keyrelease)
+        self.combo.bind("<Return>", self._on_enter)
 
     def _on_select(self, event):
         if self.on_change:
             self.on_change(self.var.get())
 
+    def _on_keyrelease(self, event):
+        """Filter dropdown as user types."""
+        if event.keysym in ("Up", "Down", "Left", "Right", "Return", "Escape"):
+            return
+
+        typed = self.var.get().upper()
+        if not typed:
+            self._filtered_symbols = self._all_symbols.copy()
+        else:
+            self._filtered_symbols = [s for s in self._all_symbols if typed in s.upper()]
+
+        self.combo["values"] = self._filtered_symbols
+
+        # Show dropdown if there are matches
+        if self._filtered_symbols and typed:
+            self.combo.event_generate("<Down>")
+
+    def _on_enter(self, event):
+        """Handle Enter key - select first match or keep typed value."""
+        typed = self.var.get().upper()
+        # If exact match exists, use it
+        for s in self._all_symbols:
+            if s.upper() == typed:
+                self.var.set(s)
+                if self.on_change:
+                    self.on_change(s)
+                return
+        # Otherwise use first filtered match
+        if self._filtered_symbols:
+            self.var.set(self._filtered_symbols[0])
+            if self.on_change:
+                self.on_change(self._filtered_symbols[0])
+
     def get(self) -> str:
         return self.var.get()
+
+    def set_symbols(self, symbols: list[str]) -> None:
+        """Update the available symbols list."""
+        self._all_symbols = symbols.copy()
+        self._filtered_symbols = symbols.copy()
+        self.combo["values"] = symbols
+        # If current value not in new list, set to first symbol
+        if self.var.get() not in symbols and symbols:
+            self.var.set(symbols[0])
+            if self.on_change:
+                self.on_change(symbols[0])
 
 
 class VolumeInput(tk.Frame):
