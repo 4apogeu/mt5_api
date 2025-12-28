@@ -39,7 +39,7 @@ input string   ServerAddress = "127.0.0.1";       // Python server IP
 input int      ServerPort = 5555;                  // Python server port
 input int      ReconnectDelayMs = 5000;            // Reconnect delay (ms)
 input int      HeartbeatIntervalMs = 10000;        // Heartbeat interval (ms)
-input int      TimerIntervalMs = 100;              // Polling interval (ms)
+input int      TimerIntervalMs = 10;               // Polling interval (ms)
 
 //--- Global variables
 uint           g_socket = INVALID_SOCKET;
