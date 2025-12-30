@@ -13,6 +13,45 @@ A socket-based bridge for trading on MetaTrader 5 from Python. Enables cross-pla
 
 > **Note**: MQL5 only supports client-side sockets. Python must be the TCP server, MT5 EA connects as client.
 
+## Installation
+
+### Prerequisites
+
+- Python 3.11+
+- MetaTrader 5 (Windows)
+
+### Install Python Dependencies
+
+```bash
+# Clone the repository
+git clone https://github.com/huy-bui-tech/mt5_api.git
+cd mt5_api
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+# On Linux/Mac:
+source .venv/bin/activate
+# On Windows:
+.venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Using uv (faster alternative)
+
+```bash
+# Install uv if not already installed
+pip install uv
+
+# Create venv and install dependencies
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+```
+
 ## Project Structure
 
 ```
