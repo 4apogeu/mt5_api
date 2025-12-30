@@ -1,4 +1,8 @@
+CENTRAL_SERVER_GUIDE
 __pycache__/
 *.pyc
 .venv/
 *.ex5
+
+BRANCH_GUIDE
+.env
