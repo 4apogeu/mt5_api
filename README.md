@@ -120,9 +120,16 @@ async def main():
     tick = await bridge.get_tick("EURUSD")
     print(f"EURUSD: Bid={tick.bid}, Ask={tick.ask}")
 
-    # Get historical data
+    # Get historical data (last N candles)
     rates = await bridge.get_rates("EURUSD", Timeframe.H1, 100)
     print(f"Got {len(rates)} candles")
+
+    # Get historical data for a time range (oldest -> newest)
+    from datetime import datetime, timezone, timedelta
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=2)
+    rates = await bridge.get_rates_range("EURUSD", Timeframe.H1, start, end)
+    print(f"Got {len(rates)} candles in range")
 
     # Place a buy order
     result = await bridge.buy("EURUSD", 0.01, stop_loss=tick.bid - 0.0050)
@@ -147,12 +154,19 @@ asyncio.run(main())
 | Command | Python Method | Description |
 |---------|---------------|-------------|
 | TRADE | `buy()`, `sell()`, `place_pending_order()` | Execute orders |
-| GET_DATA | `get_rates(symbol, timeframe, count)` | Historical OHLC data |
+| GET_DATA | `get_rates(symbol, timeframe, count)` | Historical OHLC data (last N candles) |
+| GET_DATA_RANGE | `get_rates_range(symbol, timeframe, from_time, to_time)` | Historical OHLC data for a time range, chronological order |
 | GET_TICK | `get_tick(symbol)` | Current bid/ask |
 | GET_ACCOUNT | `get_account()` | Balance, equity, margin |
 | GET_POSITIONS | `get_positions()` | All open positions |
 | CLOSE_POSITION | `close_position(ticket)` | Close position by ticket |
 | HEARTBEAT | `heartbeat()` | Connection check |
+
+> **`get_rates_range` time semantics:** `from_time`/`to_time` accept `datetime`
+> (naive treated as UTC) or raw epoch seconds. They are sent verbatim to MQL5
+> `CopyRates`, which interprets them in the broker **server-time** domain (same as
+> `MqlRates.time`) — align your timestamps with the broker's clock if it differs
+> from UTC. Bars come back oldest → newest; an empty range returns `[]`.
 
 ## Order Types
 

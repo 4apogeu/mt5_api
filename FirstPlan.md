@@ -51,6 +51,7 @@ class MT5Bridge:
     async def buy(symbol, volume, sl=None, tp=None) -> OrderResult
     async def sell(symbol, volume, sl=None, tp=None) -> OrderResult
     async def get_rates(symbol, timeframe, count) -> DataFrame
+    async def get_rates_range(symbol, timeframe, from_time, to_time) -> DataFrame
     async def get_tick(symbol) -> TickData
     async def get_account() -> AccountInfo
     async def get_positions() -> List[Position]
@@ -81,6 +82,7 @@ class MT5Bridge:
 |--------|--------|---------------|
 | TRADE | symbol, type, volume, sl, tp | ticket, price_executed |
 | GET_DATA | symbol, timeframe, count | rates[] |
+| GET_DATA_RANGE | symbol, timeframe, from, to | rates[] |
 | GET_TICK | symbol | bid, ask, time |
 | GET_ACCOUNT | - | balance, equity, margin |
 | GET_POSITIONS | - | positions[] |

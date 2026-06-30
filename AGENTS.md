@@ -234,3 +234,30 @@ python test_latency.py --iterations 50 --symbol BTCUSD --output latency.csv
 **Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
 **Description**: Replace symbol dropdown with searchable autocomplete that filters tradeable pairs from account.
 
+---
+
+### 2026-06-30: GET_DATA_RANGE — fetch candles by time range
+
+**Goal**: Fetch OHLC for an explicit period `[from, to]` (MQL5 `CopyRates` over
+time), in addition to the existing `GET_DATA` (last N candles by `count`). Lets
+consumers backfill only missing edges of a range instead of over-fetching by count.
+
+**Files**:
+- `mt5_bridge/protocol/models.py`: `Action.GET_DATA_RANGE` + `DataRangeParams`
+  (`symbol, timeframe, from_ts, to_ts`; epoch seconds).
+- `mt5_bridge/trading/bridge.py`: `get_rates_range(symbol, tf, from_time, to_time)`
+  (accepts `datetime`/epoch, naive treated as UTC; `_to_epoch` helper).
+- `mql5/Experts/MT5SocketClient.mq5`: dispatch case + `HandleGetDataRange` via
+  `CopyRates(sym, tf, from, to, rates)`. Shared `RatesToJson()` helper now used by
+  both data handlers. Named error codes `ERR_INVALID_TIMEFRAME` / `ERR_INVALID_RANGE`.
+
+**Semantics**: `from`/`to` are epoch seconds in the broker **server-time** domain
+(same as `MqlRates.time`); timezone alignment is the caller's responsibility. Range
+bars are returned chronologically (oldest → newest); `GET_DATA` keeps newest-first.
+Empty range → `[]` (not an error).
+
+**Compatibility**: `get_rates` (count) untouched. EA must be **recompiled** — an old
+advisor replies `Unknown action: GET_DATA_RANGE`.
+
+**Status**: Implemented; pending live test on stand.
+
