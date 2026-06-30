@@ -10,6 +10,7 @@ class Action(Enum):
     """Supported command actions."""
     TRADE = "TRADE"
     GET_DATA = "GET_DATA"
+    GET_DATA_RANGE = "GET_DATA_RANGE"
     GET_TICK = "GET_TICK"
     GET_ACCOUNT = "GET_ACCOUNT"
     GET_POSITIONS = "GET_POSITIONS"
@@ -138,6 +139,29 @@ class DataParams:
             "symbol": self.symbol,
             "timeframe": self.timeframe.value,
             "count": self.count
+        }
+
+
+@dataclass
+class DataRangeParams:
+    """Parameters for GET_DATA_RANGE command.
+
+    from_ts / to_ts — Unix epoch seconds. They are passed verbatim to the EA,
+    which casts them to MQL5 `datetime` (server-time domain) for
+    CopyRates(symbol, tf, from, to, rates). The caller is responsible for any
+    timezone alignment between its clock and the broker server time.
+    """
+    symbol: str
+    timeframe: Timeframe
+    from_ts: int
+    to_ts: int
+
+    def to_dict(self) -> dict:
+        return {
+            "symbol": self.symbol,
+            "timeframe": self.timeframe.value,
+            "from": self.from_ts,
+            "to": self.to_ts
         }
 
 

@@ -283,6 +283,8 @@ void HandleMessage(string json)
         response = HandleTrade(requestId, params);
     else if(action == "GET_DATA")
         response = HandleGetData(requestId, params);
+    else if(action == "GET_DATA_RANGE")
+        response = HandleGetDataRange(requestId, params);
     else if(action == "GET_TICK")
         response = HandleGetTick(requestId, params);
     else if(action == "GET_ACCOUNT")
@@ -413,6 +415,67 @@ string HandleGetData(string requestId, string params)
     }
 
     // Build rates array JSON
+    string ratesJson = "[";
+    for(int i = 0; i < copied; i++)
+    {
+        if(i > 0) ratesJson += ",";
+        ratesJson += StringFormat(
+            "{\"time\":\"%s\",\"open\":%.5f,\"high\":%.5f,\"low\":%.5f,\"close\":%.5f,\"volume\":%d}",
+            TimeToString(rates[i].time, TIME_DATE|TIME_SECONDS),
+            rates[i].open,
+            rates[i].high,
+            rates[i].low,
+            rates[i].close,
+            rates[i].tick_volume
+        );
+    }
+    ratesJson += "]";
+
+    string data = "{\"rates\":" + ratesJson + "}";
+    return BuildSuccessResponse(requestId, data);
+}
+
+//+------------------------------------------------------------------+
+//| Handle GET_DATA_RANGE command                                      |
+//| Fetches candles by time range via CopyRates(sym, tf, from, to).    |
+//| "from"/"to" are Unix epoch seconds in broker server-time domain.   |
+//+------------------------------------------------------------------+
+string HandleGetDataRange(string requestId, string params)
+{
+    string symbol = GetJsonString(params, "symbol");
+    string tfStr = GetJsonString(params, "timeframe");
+    long fromTs = (long)GetJsonDouble(params, "from");
+    long toTs   = (long)GetJsonDouble(params, "to");
+
+    // Validate symbol
+    if(!SymbolSelect(symbol, true))
+    {
+        return BuildErrorResponse(requestId, GetLastError(), "Invalid symbol: " + symbol);
+    }
+
+    // Map timeframe string to enum
+    ENUM_TIMEFRAMES timeframe = StringToTimeframe(tfStr);
+    if(timeframe == PERIOD_CURRENT)
+    {
+        return BuildErrorResponse(requestId, -1, "Invalid timeframe: " + tfStr);
+    }
+
+    if(toTs <= fromTs)
+    {
+        return BuildErrorResponse(requestId, -1, "Invalid range: to <= from");
+    }
+
+    // Get rates by time range
+    MqlRates rates[];
+    ArraySetAsSeries(rates, true);
+    int copied = CopyRates(symbol, timeframe, (datetime)fromTs, (datetime)toTs, rates);
+
+    if(copied < 0)
+    {
+        return BuildErrorResponse(requestId, GetLastError(), "Failed to copy rates");
+    }
+
+    // Build rates array JSON (copied == 0 => empty range, return [])
     string ratesJson = "[";
     for(int i = 0; i < copied; i++)
     {

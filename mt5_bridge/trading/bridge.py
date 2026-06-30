@@ -1,7 +1,8 @@
 """High-level MT5 trading bridge API."""
 
 import logging
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Union
 
 from ..server import MT5Server, MT5Connection
 from ..protocol import (
@@ -11,6 +12,7 @@ from ..protocol import (
     Request,
     TradeParams,
     DataParams,
+    DataRangeParams,
     OrderResult,
     TickData,
     AccountInfo,
@@ -202,6 +204,38 @@ class MT5Bridge:
         params = DataParams(symbol=symbol, timeframe=timeframe, count=count)
         data = await self._send_command(Action.GET_DATA, params.to_dict())
         return data.get("rates", [])
+
+    async def get_rates_range(
+        self,
+        symbol: str,
+        timeframe: Timeframe,
+        from_time: Union[datetime, int, float],
+        to_time: Union[datetime, int, float]
+    ) -> list[dict]:
+        """Get historical OHLC data for a time range [from_time, to_time].
+
+        Maps to MQL5 CopyRates(symbol, tf, from, to, rates). Accepts datetime
+        (naive treated as UTC) or raw epoch seconds. The resulting epoch values
+        are sent verbatim to MT5, which interprets them as broker server time —
+        align the caller's clock with the broker accordingly.
+        """
+        params = DataRangeParams(
+            symbol=symbol,
+            timeframe=timeframe,
+            from_ts=self._to_epoch(from_time),
+            to_ts=self._to_epoch(to_time)
+        )
+        data = await self._send_command(Action.GET_DATA_RANGE, params.to_dict())
+        return data.get("rates", [])
+
+    @staticmethod
+    def _to_epoch(t: Union[datetime, int, float]) -> int:
+        """Normalize datetime/epoch to integer Unix seconds (naive => UTC)."""
+        if isinstance(t, (int, float)):
+            return int(t)
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return int(t.timestamp())
 
     async def get_tick(self, symbol: str) -> TickData:
         """Get current bid/ask for a symbol."""
