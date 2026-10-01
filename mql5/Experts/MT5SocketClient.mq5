@@ -4,7 +4,7 @@
 //|                         Uses Windows Winsock for reliable sockets |
 //+------------------------------------------------------------------+
 #property copyright "MT5-Python Bridge"
-#property version   "2.01"
+#property version   "2.02"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -37,6 +37,7 @@
 //--- Protocol validation error codes (negative to avoid clashing with MT5 GetLastError())
 #define ERR_INVALID_TIMEFRAME  -1
 #define ERR_INVALID_RANGE      -2
+#define ERR_TRADING_DISABLED   -3
 
 //--- Input parameters
 input string   ServerAddress = "127.0.0.1";       // Python server IP
@@ -44,6 +45,7 @@ input int      ServerPort = 5555;                  // Python server port
 input int      ReconnectDelayMs = 5000;            // Reconnect delay (ms)
 input int      HeartbeatIntervalMs = 10000;        // Heartbeat interval (ms)
 input int      TimerIntervalMs = 10;               // Polling interval (ms)
+input bool     LogVerbose = false;                 // Log every request/response and connect retry
 input bool     AllowTrading = false;               // Allow TRADE/CLOSE_POSITION (false = read-only)
 
 //--- Global variables
@@ -63,7 +65,7 @@ ulong          g_t2_receive = 0;  // Timestamp when message was received (for la
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    Print("MT5SocketClient v2.0 initializing (Winsock)...");
+    Print("MT5SocketClient v2.02 initializing (Winsock)...");
     Print("Server: ", ServerAddress, ":", ServerPort);
 
     // Initialize Winsock
@@ -178,7 +180,7 @@ bool ConnectToServer()
     if(connect(g_socket, sockAddr, 16) == SOCKET_ERROR)
     {
         int err = WSAGetLastError();
-        Print("Connect failed: ", err);
+        if(LogVerbose) Print("Connect failed: ", err);
         closesocket(g_socket);
         g_socket = INVALID_SOCKET;
         return false;
@@ -228,7 +230,7 @@ void ReadFromSocket()
     {
         string data = CharArrayToString(buffer, 0, bytesRead);
         g_receiveBuffer += data;
-        Print("Received ", bytesRead, " bytes");
+        if(LogVerbose) Print("Received ", bytesRead, " bytes");
     }
     else if(bytesRead == 0)
     {
@@ -280,12 +282,12 @@ void HandleMessage(string json)
     string action = GetJsonString(json, "action");
     string params = GetJsonObject(json, "params");
 
-    Print("Received command: ", action, " [", requestId, "]");
+    if(LogVerbose) Print("Received command: ", action, " [", requestId, "]");
 
     string response = "";
 
     if((action == "TRADE" || action == "CLOSE_POSITION") && !AllowTrading)
-        response = BuildErrorResponse(requestId, -3, "Trading disabled (AllowTrading=false)");
+        response = BuildErrorResponse(requestId, ERR_TRADING_DISABLED, "Trading disabled (AllowTrading=false)");
     else if(action == "TRADE")
         response = HandleTrade(requestId, params);
     else if(action == "GET_DATA")
@@ -688,7 +690,7 @@ void SendResponse(string response)
     }
     else
     {
-        Print("Sent ", sent, " bytes");
+        if(LogVerbose) Print("Sent ", sent, " bytes");
     }
 }
 

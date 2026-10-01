@@ -282,6 +282,11 @@ With 10ms polling interval (default):
 | ReconnectDelayMs | 5000 | Reconnect delay on disconnect |
 | HeartbeatIntervalMs | 10000 | Keep-alive interval |
 | TimerIntervalMs | 10 | Socket polling interval (lower = faster, higher CPU) |
+| LogVerbose | false | Log every request/response and connect retry (noisy: ~3 lines/s with heartbeat) |
+| AllowTrading | false | Allow `TRADE` / `CLOSE_POSITION`; when false they return error `-3` (read-only mode) |
+
+> On a shared host bind the Python server to loopback only
+> (`python -m mt5_bridge.main --host 127.0.0.1 --port <port>`): the socket has no authentication.
 
 ## Troubleshooting
 
