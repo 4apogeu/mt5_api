@@ -4,7 +4,7 @@
 //|                         Uses Windows Winsock for reliable sockets |
 //+------------------------------------------------------------------+
 #property copyright "MT5-Python Bridge"
-#property version   "2.00"
+#property version   "2.01"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -44,6 +44,7 @@ input int      ServerPort = 5555;                  // Python server port
 input int      ReconnectDelayMs = 5000;            // Reconnect delay (ms)
 input int      HeartbeatIntervalMs = 10000;        // Heartbeat interval (ms)
 input int      TimerIntervalMs = 10;               // Polling interval (ms)
+input bool     AllowTrading = false;               // Allow TRADE/CLOSE_POSITION (false = read-only)
 
 //--- Global variables
 uint           g_socket = INVALID_SOCKET;
@@ -283,7 +284,9 @@ void HandleMessage(string json)
 
     string response = "";
 
-    if(action == "TRADE")
+    if((action == "TRADE" || action == "CLOSE_POSITION") && !AllowTrading)
+        response = BuildErrorResponse(requestId, -3, "Trading disabled (AllowTrading=false)");
+    else if(action == "TRADE")
         response = HandleTrade(requestId, params);
     else if(action == "GET_DATA")
         response = HandleGetData(requestId, params);
