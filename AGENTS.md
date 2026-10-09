@@ -1,263 +1,79 @@
-# AGENTS
+# AGENTS.md — MT5SocketClient (мост MT5 ↔ Python)
 
-<skills_system priority="1">
+Правила для работы в этой папке. Что умеет мост и как его запускать —
+`README.md`; исходный замысел — `FirstPlan.md`; история изменений — `git log`.
 
-## Available Skills
+## Что это
 
-<!-- SKILLS_TABLE_START -->
-<usage>
-When users ask you to perform tasks, check if any of the available skills below can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
+TCP-мост между Python и терминалом MT5. В MQL5 нет серверных сокетов, поэтому
+сервер — Python (`mt5_bridge/`), а советник `mql5/Experts/MT5SocketClient.mq5`
+подключается к нему клиентом и по таймеру опрашивает сокет. Сообщения — JSON.
 
-How to use skills:
-- Invoke: Bash("openskills read <skill-name>")
-- The skill content will load with detailed instructions on how to complete the task
-- Base directory provided in output for resolving bundled resources (references/, scripts/, assets/)
+Папка — git-сабмодуль репозитория `MQL5` (свой репозиторий —
+`github.com/4apogeu/mt5_api`). Отсюда два следствия:
 
-Usage notes:
-- Only use skills listed in <available_skills> below
-- Do not invoke a skill that is already loaded in your context
-- Each skill invocation is stateless
-</usage>
+- коммит здесь попадает в `mt5_api`, а не в `MQL5`; в `MQL5` после него
+  отдельным коммитом поднимается указатель сабмодуля;
+- указатель поднимать только на коммит, который уже запушен в `mt5_api`:
+  VPS клонирует `MQL5` вместе с сабмодулями и не найдёт коммит, которого нет
+  на GitHub. Push — по просьбе пользователя, как и в основном репозитории.
 
-<available_skills>
+## Раскладка
 
-<skill>
-<name>writing-plans</name>
-<description>Create detailed implementation plans with bite-sized tasks for engineers with zero codebase context</description>
-<location>project</location>
-</skill>
+| Путь | Что там |
+|---|---|
+| `mql5/Experts/MT5SocketClient.mq5` | советник-клиент: Winsock (`ws2_32.dll`), разбор команд, ответы |
+| `mt5_bridge/protocol/` | `Action`, модели параметров и ответов, разбор JSON |
+| `mt5_bridge/server/` | TCP-сервер и соединение |
+| `mt5_bridge/trading/bridge.py` | `MT5Bridge` — публичный API (`buy`, `get_rates`, `get_rates_range`, …) |
+| `mt5_bridge/timing/` | замер задержек (сбор, статистика, отчёт) |
+| `mt5_bridge/ui/` | панель ордеров на Tkinter |
+| `run_panel.py`, `test_latency.py`, `test_trade.py`, `example.py` | запуск панели, бенчмарк, проверка сделки, пример |
 
-</available_skills>
-<!-- SKILLS_TABLE_END -->
+## Правила
 
-</skills_system>
-@../../ai/systems/SOFT-DEV-PRIN.md
+- **Команда протокола живёт в трёх местах, и менять их надо вместе:**
+  `Action` и модель параметров в `mt5_bridge/protocol/models.py`, метод в
+  `mt5_bridge/trading/bridge.py`, обработчик и ветка диспетчера в
+  `MT5SocketClient.mq5`. Советник после этого перекомпилируется и
+  переприкрепляется: старый `.ex5` отвечает `Unknown action: <команда>`.
+- **`AllowTrading` по умолчанию `false`** и закрывает `TRADE` и
+  `CLOSE_POSITION`: советник стоит на живых счетах как источник данных, и
+  случайная команда с Python-стороны не должна открыть сделку. Дефолт не
+  менять; торговлю включают осознанно на конкретном графике.
+- **Время — в домене сервера брокера.** `from`/`to` в `GET_DATA_RANGE` и
+  `MqlRates.time` — секунды эпохи по часам сервера, не UTC; выравнивание —
+  забота вызывающего кода.
+- **Порядок баров разный:** `GET_DATA` отдаёт от нового к старому,
+  `GET_DATA_RANGE` — от старого к новому. Пустой диапазон — `[]`, не ошибка.
+- **Сокеты — через Winsock DLL, не штатные `Socket*`:** штатные оказались
+  ненадёжными. На графике нужен флаг «Разрешить импорт DLL».
+- **Интервал опроса `TimerIntervalMs = 10`:** на 100 мс средняя задержка
+  запроса ~100 мс, на 10 мс — ~14 мс (замер 2025-12-28). Не поднимать без
+  замера `test_latency.py`.
+- **Код советника** подчиняется правилам кода основного репозитория
+  (`Experts/_my/AGENTS.md`, «Код»; ступень — Tier 2, утилита): версия и
+  changelog на каждое изменение, компиляция только через
+  `_scripts/compile-mq5.sh` из корня `MQL5`, 0 ошибок и 0 предупреждений.
+- **На прод-счетах** советник — вспомогательный и ставится на `XAUUSD`
+  (`Experts/_!prod/AGENTS.md`).
 
-# Agent Memory & Knowledge Strategy
+## Команды
 
-You are an AI Agent equipped with two types of memory. You MUST follow these rules whenever a user provides a piece of information that should be "remembered."
+Из этой папки:
 
-## 1. Memory Storage Options
-When the user shares a fact, preference, or architectural decision, you must categorize it:
-
-### Option A: Local Project Context (`AGENTS.md`)
-* **Use for:** Project-specific technical specs, todo lists, active bugs, or folder structures.
-* **Scope:** This project only.
-* **Action:** Append the info to the "Project Log" section at the bottom of this file.
-
----
-
-## 3. Project Log (Automated Section)
-
-### 2025-12-27: Python Server Implementation Complete
-
-**Architecture**: Python (TCP Server) ← → MT5 EA (TCP Client)
-- MQL5 lacks server sockets, so Python must be the server
-
-**Structure**:
-```
-mt5_bridge/
-├── protocol/       # JSON message models & parsing
-├── server/         # TCP server & connection handling
-├── trading/        # MT5Bridge high-level API
-└── main.py         # Entry point
-```
-
-**API Methods**:
-- `buy()`, `sell()`, `place_pending_order()`
-- `get_rates()`, `get_tick()`
-- `get_account()`, `get_positions()`
-- `close_position()`, `modify_position()`
-
-**Next**: Implement MT5 EA (MQL5 client)
-
-### 2025-12-27: MT5 EA Implementation Complete
-
-**File**: `mql5/Experts/MT5SocketClient.mq5`
-
-**Features**:
-- Socket client connecting to Python server
-- OnTimer-based polling (100ms interval)
-- JSON message parsing and response building
-- All commands: TRADE, GET_DATA, GET_TICK, GET_ACCOUNT, GET_POSITIONS, CLOSE_POSITION, HEARTBEAT
-
-**Setup on MT5**:
-1. Copy EA to `MQL5/Experts/` folder
-2. Allow WebRequest for Python server IP in Tools > Options > Expert Advisors
-3. Attach EA to any chart, configure ServerAddress and ServerPort
-
-**Status**: Ready for testing
-
-### 2025-12-27: Winsock DLL Migration & Testing Complete
-
-**Issue**: MQL5 native socket functions unreliable
-**Solution**: Migrated to Windows Winsock DLL (`ws2_32.dll`)
-
-**Key imports**:
-- `WSAStartup`, `WSACleanup`, `WSAGetLastError`
-- `socket`, `connect`, `send`, `recv`, `closesocket`
-- `ioctlsocket` (non-blocking mode)
-
-**Testing Results**:
-- BTCUSD BUY 0.01 lots - SUCCESS
-- CLOSE_POSITION - SUCCESS ($0.12 profit)
-
-**All commands verified working**:
-- TRADE (BUY/SELL)
-- GET_TICK, GET_DATA, GET_ACCOUNT, GET_POSITIONS
-- CLOSE_POSITION
-
----
-
-### 2025-12-27: Order Panel UI Implementation Complete
-
-**Framework**: Tkinter (standard library)
-
-**Structure**:
-```
-mt5_bridge/ui/
-├── __init__.py       # Module exports
-├── config.py         # PanelConfig, Colors dataclasses
-├── async_bridge.py   # AsyncBridge for Tkinter-asyncio integration
-├── widgets.py        # TradeButton, StatusBar, SymbolSelector, VolumeInput
-└── order_panel.py    # Main OrderPanel class
-
-run_panel.py          # Standalone runner
-```
-
-**Features**:
-- B/S/C buttons with keyboard shortcuts (B=Buy, S=Sell, C=Close, Esc=Quit)
-- Symbol dropdown (BTCUSD, EURUSD, GBPUSD, USDJPY, XAUUSD)
-- Volume input with +/- buttons
-- Visual feedback (hover, active, success/error flash)
-- Status bar showing connection and last action
-- Thread-safe async operations via queue
-
-**Usage**:
 ```bash
-python run_panel.py --symbol BTCUSD --volume 0.01
+python -m mt5_bridge.main --host 0.0.0.0 --port 5555   # сервер
+python run_panel.py --symbol BTCUSD --volume 0.01      # панель ордеров
+python test_latency.py --iterations 50 --symbol BTCUSD # замер задержек
 ```
 
-**Status**: Ready for testing
+Из корня `MQL5`:
 
----
-
-### 2025-12-28: Execution Speed Measurement Complete
-
-**Approach**: Embedded EA timestamps + round-trip calculation
-
-**Timestamp points**:
-- T1: Python sends command
-- T2: EA receives (`GetMicrosecondCount()`)
-- T3: EA executes trade
-- T4: Python receives response
-
-**Metrics**:
-- Round-trip latency (T4-T1)
-- EA processing time (T3-T2)
-- Network estimate ((T4-T1)-(T3-T2))/2
-
-**Structure**:
-```
-mt5_bridge/timing/
-├── __init__.py    # Module exports
-├── models.py      # TimingData, LatencyStats, TimingReport
-├── collector.py   # TimingCollector class
-├── analyzer.py    # LatencyAnalyzer with stats (avg, P50, P95, P99)
-└── reporter.py    # ConsoleReporter, CSVReporter
-
-test_latency.py    # Benchmark script
-```
-
-**EA modifications**:
-- Added `g_t2_receive` global variable
-- Capture timestamp in `HandleMessage()` using `GetMicrosecondCount()`
-- Added `timing` object in JSON response from `BuildSuccessResponse()`
-
-**Bridge integration**:
-- Added `enable_timing` flag to MT5Bridge constructor
-- Methods: `get_timing_samples()`, `get_timing_report()`, `get_timing_report_by_action()`, `clear_timing_data()`
-
-**Usage**:
 ```bash
-python test_latency.py --iterations 50 --symbol BTCUSD --output latency.csv
+_scripts/compile-mq5.sh Experts/_my/MT5SocketClient/mql5/Experts/MT5SocketClient.mq5
 ```
 
-**Benchmark Results** (10ms polling interval):
-
-| Metric | Min | Avg | P50 | P95 | P99 | Max |
-|--------|-----|-----|-----|-----|-----|-----|
-| Round-trip | 1.06ms | 13.64ms | 17.36ms | 22.64ms | 26.41ms | 26.41ms |
-| EA Processing | 0.01ms | 0.02ms | 0.02ms | 0.04ms | 0.06ms | 0.06ms |
-| Network (est.) | 0.52ms | 6.81ms | 8.67ms | 11.31ms | 13.20ms | 13.20ms |
-
-**Polling Interval Comparison**:
-
-| Interval | Avg Latency | Improvement |
-|----------|-------------|-------------|
-| 100ms | 99.88ms | baseline |
-| 10ms | 13.64ms | 7.3x faster |
-
-**Status**: Complete
-
----
-
-### 2025-12-28: UI Improvements - Phase 2
-
-**Goals**:
-1. Position modify dialog (replace inline editing)
-2. Spread display in dollar amount
-3. Symbol autocomplete from tradeable pairs
-
-#### Task 1: Position Modify Dialog
-**Status**: Complete
-**Files**: `mt5_bridge/ui/widgets.py`
-**Description**: Add "Edit" button on position row that opens a modal dialog for modifying SL/TP/trailing stop. This replaces inline editing which is difficult due to auto-refresh.
-
-#### Task 2: Spread Display
-**Status**: Complete
-**Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
-**Description**: Display spread cost in dollar amount (spread * volume * pip_value) near the volume input area.
-
-#### Task 3a: GET_SYMBOLS EA Command
-**Status**: Complete
-**Files**: `mql5/Experts/MT5SocketClient.mq5`
-**Description**: Add GET_SYMBOLS handler to EA using SymbolsTotal() and SymbolName() to return all tradeable symbols.
-
-#### Task 3b: Python Bridge get_symbols
-**Status**: Complete
-**Files**: `mt5_bridge/protocol/models.py`, `mt5_bridge/trading/bridge.py`
-**Description**: Add GET_SYMBOLS action and get_symbols() method to Python bridge.
-
-#### Task 3c: Symbol Autocomplete
-**Status**: Complete
-**Files**: `mt5_bridge/ui/widgets.py`, `mt5_bridge/ui/order_panel.py`
-**Description**: Replace symbol dropdown with searchable autocomplete that filters tradeable pairs from account.
-
----
-
-### 2026-06-30: GET_DATA_RANGE — fetch candles by time range
-
-**Goal**: Fetch OHLC for an explicit period `[from, to]` (MQL5 `CopyRates` over
-time), in addition to the existing `GET_DATA` (last N candles by `count`). Lets
-consumers backfill only missing edges of a range instead of over-fetching by count.
-
-**Files**:
-- `mt5_bridge/protocol/models.py`: `Action.GET_DATA_RANGE` + `DataRangeParams`
-  (`symbol, timeframe, from_ts, to_ts`; epoch seconds).
-- `mt5_bridge/trading/bridge.py`: `get_rates_range(symbol, tf, from_time, to_time)`
-  (accepts `datetime`/epoch, naive treated as UTC; `_to_epoch` helper).
-- `mql5/Experts/MT5SocketClient.mq5`: dispatch case + `HandleGetDataRange` via
-  `CopyRates(sym, tf, from, to, rates)`. Shared `RatesToJson()` helper now used by
-  both data handlers. Named error codes `ERR_INVALID_TIMEFRAME` / `ERR_INVALID_RANGE`.
-
-**Semantics**: `from`/`to` are epoch seconds in the broker **server-time** domain
-(same as `MqlRates.time`); timezone alignment is the caller's responsibility. Range
-bars are returned chronologically (oldest → newest); `GET_DATA` keeps newest-first.
-Empty range → `[]` (not an error).
-
-**Compatibility**: `get_rates` (count) untouched. EA must be **recompiled** — an old
-advisor replies `Unknown action: GET_DATA_RANGE`.
-
-**Status**: Implemented; pending live test on stand.
-
+У советника (`ServerPort`), панели и бенчмарка порт по умолчанию 5555, у
+`mt5_bridge.main` — 1111: серверу порт задавать явно, иначе советник не
+подключится.
